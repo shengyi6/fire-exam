@@ -1498,11 +1498,27 @@ function renderAllResults(results) {
 }
 
 function buildReviewItem(r, badgeClass, badgeText) {
+    // 尝试从当前内存中的题目数据获取最新答案（反映后台可能的修改）
+    var displayAnswer = r.correctAnswer;
+    if (r.questionNum && questions.length > 0) {
+        // 通过题目 ID 在当前题库中查找最新答案
+        var latestQ = questions.find(function(q) { return q.id === r.questionNum; });
+        if (latestQ && latestQ.answer && latestQ.answer !== r.correctAnswer) {
+            displayAnswer = escapeHtml(latestQ.answer);
+            // 标注答案已被更新
+            displayAnswer += ' <span style="font-size:11px;color:var(--warning);margin-left:4px;">(已更新)</span>';
+        } else {
+            displayAnswer = escapeHtml(r.correctAnswer);
+        }
+    } else {
+        displayAnswer = escapeHtml(r.correctAnswer);
+    }
+
     return '<div class="review-item">'
         + '<div class="review-question">第'+(r.qIndex+1)+'题：' + escapeHtml(r.question) + '</div>'
         + '<div class="review-answer">'
         + '<div class="answer-row"><span class="answer-tag tag-user">你的答案</span><span class="answer-text">' + (r.userAnswer || '<span style="color:#999">(未作答)</span>') + '</span></div>'
-        + '<div class="answer-row"><span class="answer-tag tag-correct">标准答案</span><span class="answer-text">' + escapeHtml(r.correctAnswer) + '</span><span class="similarity-badge '+badgeClass+'">匹配度 ' + badgeText + '</span></div>'
+        + '<div class="answer-row"><span class="answer-tag tag-correct">标准答案</span><span class="answer-text">' + displayAnswer + '</span><span class="similarity-badge '+badgeClass+'">匹配度 ' + badgeText + '</span></div>'
         + '</div></div>';
 }
 

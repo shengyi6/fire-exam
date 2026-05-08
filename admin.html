@@ -718,8 +718,39 @@ function switchTab(tabId) {
     // 刷新对应面板数据
     if (tabId === 'dashboard') renderDashboard();
     if (tabId === 'questions') renderQuestions();
-    if (tabId === 'records') renderRecords();
+    if (tabId === 'records') refreshRecordsFromCloud();  // ← 改为从云端刷新后渲染
     if (tabId === 'settings') loadSettings();
+}
+
+/**
+ * 切换到成绩记录时：先从云端拉取最新数据，再渲染
+ * 解决考生交卷后管理员看不到最新成绩的问题
+ */
+async function refreshRecordsFromCloud() {
+    // 显示加载中
+    var tbody = document.getElementById('r-tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">⏳ 正在从云端拉取最新数据...</td></tr>';
+
+    try {
+        // 尝试从云端读取最新数据
+        var latestData = await CloudDB.read();
+        if (latestData) {
+            // 合并：云端数据优先，保留本地可能更新的内容
+            if (!cloudData) cloudData = {};
+            if (latestData.banks) cloudData.banks = latestData.banks;
+            if (latestData.records) cloudData.records = latestData.records;
+            if (latestData.settings) cloudData.settings = latestData.settings;
+            ensureDataStructure();
+            // 同步更新本地缓存
+            localStorage.setItem('fire_exam_cloud_data', JSON.stringify(cloudData));
+            console.log('✅ 成绩记录已从云端更新，共', (cloudData.records || []).length, '条');
+        }
+    } catch(e) {
+        console.log('ℹ️ 云端拉取失败，使用本地缓存数据:', e.message);
+    }
+
+    // 无论云端是否成功，都渲染当前内存中的数据
+    renderRecords();
 }
 
 function toggleSidebar() {
@@ -744,6 +775,8 @@ async function refreshAllData() {
                     refreshBankSelector();
                     renderQuestions();
                     renderDashboard();
+                    renderRecords();       // ← 新增：渲染成绩记录
+                    updatePersonFilter(cloudData.records || []);  // ← 新增：更新人员筛选
                     updateConnStatus(true);
                     hideToast();
                     return;
@@ -751,21 +784,24 @@ async function refreshAllData() {
             } catch(e) { /* 继续往下 */ }
         }
 
-        // 2. 尝试从云端读取
+        // 2. 尝试从云端读取（优先云端，数据最新）
         cloudData = await CloudDB.read();
         if (cloudData) {
             ensureDataStructure();
             // 检查是否有有效数据
             var hasData = cloudData.banks && Object.keys(cloudData.banks).length > 0 &&
                           Object.values(cloudData.banks).some(function(b) { return b.length > 0; });
+            // 即使没有题库，只要有成绩记录也算有效数据
             if (!hasData) hasData = cloudData.records && cloudData.records.length > 0;
 
-            if (hasData) {
+            if (hasData || cloudData.records && cloudData.records.length > 0) {
                 localStorage.setItem('fire_exam_cloud_data', JSON.stringify(cloudData));
                 currentBankKey = '';
                 refreshBankSelector();
                 renderQuestions();
                 renderDashboard();
+                renderRecords();       // ← 新增：渲染成绩记录
+                updatePersonFilter(cloudData.records || []);  // ← 新增：更新人员筛选
                 updateConnStatus(true);
                 hideToast();
                 return;
@@ -782,6 +818,7 @@ async function refreshAllData() {
         refreshBankSelector();
         renderQuestions();
         renderDashboard();
+        renderRecords();       // ← 新增：渲染成绩记录
         updateConnStatus(false);
         hideToast();
     } catch(err) {
@@ -794,6 +831,7 @@ async function refreshAllData() {
         refreshBankSelector();
         renderQuestions();
         renderDashboard();
+        renderRecords();       // ← 新增：渲染成绩记录
         updateConnStatus(false);
         showToast('已加载内置题库 ✅', '');
     }
