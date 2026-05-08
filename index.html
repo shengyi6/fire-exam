@@ -11,6 +11,7 @@
     <meta itemprop="name" content="🚒 消防岗位抽查考试">
     <meta itemprop="description" content="惠州机场消防支队在线考试系统，随时随地进行消防知识考核">
     <title>🚒 消防岗位抽查考试</title>
+    <script src="config.js"></script>
     <style>
         :root {
             --primary: #1565C0;
@@ -440,7 +441,47 @@ let currentExam = {
 };
 
 // ========== 初始化 ==========
-function init() { renderRanking(); }
+async function init() {
+    // 优先从云端加载题库
+    await loadCloudQuestions();
+    renderRanking();
+}
+
+/**
+ * 从云端加载题库（如果可用）
+ * 如果云端不可用，使用内嵌题库作为后备
+ */
+async function loadCloudQuestions() {
+    try {
+        const cloudData = await CloudDB.read();
+        if (cloudData && cloudData.questions && cloudData.questions.length > 0) {
+            questions = cloudData.questions;
+            document.querySelector('.welcome-desc').textContent =
+                '共 ' + questions.length + ' 道题 · 随机抽题 · 在线答题';
+            console.log('✅ 已从云端加载 ' + questions.length + ' 道题目');
+        }
+    } catch(e) {
+        console.log('ℹ️ 云端不可用，使用本地内嵌题库（' + QUESTIONS_DATA.length + ' 道）');
+    }
+
+    // 同时同步云端成绩到本地显示
+    try {
+        const cloudData = await CloudDB.read();
+        if (cloudData && cloudData.records && cloudData.records.length > 0) {
+            // 合并云端记录到 localStorage
+            var localRecords = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+            var localNames = new Set(localRecords.map(function(r){return r.name+r.date;}));
+            cloudData.records.forEach(function(r){
+                var key = r.name + r.date;
+                if (!localNames.has(key)) {
+                    localRecords.push(r);
+                    localNames.add(key);
+                }
+            });
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(localRecords));
+        }
+    } catch(e2) { /* 忽略 */ }
+}
 init();
 
 // ========== 工具函数 ==========
@@ -456,6 +497,26 @@ function saveRecord(record) {
     var records = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
     records.push(record);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+
+    // 同步成绩到云端
+    syncRecordToCloud(record);
+}
+
+/**
+ * 将单条成绩记录同步到云端
+ */
+function syncRecordToCloud(record) {
+    CloudDB.read().then(function(cloudData) {
+        if (!cloudData) cloudData = { questions: [], records: [], settings: {}, version: '1.0' };
+        if (!cloudData.records) cloudData.records = [];
+        // 添加新记录
+        cloudData.records.push(record);
+        // 写回云端
+        CloudDB.write(cloudData).then(function(ok) {
+            if (ok) console.log('✅ 成绩已同步到云端');
+            else console.log('ℹ️ 云端同步失败（使用本地模式）');
+        }).catch(function(){});
+    }).catch(function(){});
 }
 
 function getRecords() {
