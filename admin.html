@@ -512,6 +512,47 @@
                 </div>
             </div>
             <div class="card">
+                <h3 style="margin-bottom:16px;font-size:16px;">☁️ 云端存储配置</h3>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+                    配置 GitHub Token 后，考生从任何设备交卷的成绩都会自动推送到云端，管理员刷新后台即可查看。<br>
+                    Token 用于向 GitHub Gist 写入数据，<strong>仅保存在本浏览器 localStorage 中</strong>。
+                </p>
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label style="font-size:13px;color:var(--text-secondary);">🔑 GitHub Token（Personal Access Token）</label>
+                    <input type="password" class="form-control" id="set-github-token" placeholder="ghp_xxxx 或 gho_xxxx ..." style="max-width:400px;margin-top:6px;">
+                    <div style="font-size:12px;color:#999;margin-top:4px;">
+                        需要有 <code>gist</code> 权限的 Token →
+                        <a href="https://github.com/settings/tokens/new?scopes=gist&description=fire-exam-cloud-storage&description=消防考试云存储" target="_blank" style="color:var(--primary)">点此快速生成 ↗</a>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label style="font-size:13px;color:var(--text-secondary);">📦 Gist ID（自动生成或手动填写）</label>
+                    <div style="display:flex;gap:8px;margin-top:6px;">
+                        <input type="text" class="form-control" id="set-gist-id" placeholder="留空则自动创建新 Gist" style="flex:1;max-width:300px;font-family:monospace;font-size:13px;">
+                        <button class="btn btn-outline btn-sm" onclick="testCloudConnection()">🔗 测试连接</button>
+                        <button class="btn btn-primary btn-sm" onclick="initCloudStorage()">🚀 初始化存储</button>
+                        <button class="btn btn-success btn-sm" onclick="generateExamUrl()" title="生成带云端配置的考生前端链接">📋 考生链接</button>
+                    </div>
+                </div>
+                <div id="cloud-config-msg" style="font-size:13px;margin-top:8px;"></div>
+
+                <!-- 云端状态详情 -->
+                <div id="cloud-status-detail" style="margin-top:14px;padding:12px;background:#f8f9fa;border-radius:8px;display:none;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="font-size:13px;font-weight:600;">存储状态详情</span>
+                        <button class="btn btn-outline btn-sm" onclick="refreshCloudStatus()">🔄 刷新</button>
+                    </div>
+                    <table style="width:100%;font-size:12px;">
+                        <tr><td style="padding:4px 0;color:#666;width:100px;">Gist ID</td><td style="font-family:monospace;" id="detail-gist-id">-</td></tr>
+                        <tr><td style="padding:4px 0;color:#666;">Token 状态</td><td id="detail-token-status">-</td></tr>
+                        <tr><td style="padding:4px 0;color:#666;">数据版本</td><td id="detail-data-version">-</td></tr>
+                        <tr><td style="padding:4px 0;color:#666;">题库数</td><td id="detail-bank-count">-</td></tr>
+                        <tr><td style="padding:4px 0;color:#666;">成绩记录数</td><td id="detail-record-count">-</td></tr>
+                        <tr><td style="padding:4px 0;color:#666;">最后更新</td><td id="detail-last-update">-</td></tr>
+                    </table>
+                </div>
+            </div>
+            <div class="card">
                 <h3 style="margin-bottom:16px;font-size:16px;">存储状态</h3>
                 <div class="setting-row">
                     <div class="setting-info"><div class="name">Gist ID</div><div class="desc">GitHub Gist 存储标识</div></div>
@@ -1303,6 +1344,9 @@ function loadSettings() {
     document.getElementById('set-default-time').value = s.defaultTime || 20;
     document.getElementById('set-pass-score').value = s.passScore || 70;
     document.getElementById('gist-id-display').textContent = CONFIG.gistId || localStorage.getItem('fire_exam_gistId') || '未配置';
+
+    // 加载云端配置到表单
+    loadCloudConfig();
 }
 
 async function saveSettings() {
@@ -1384,6 +1428,302 @@ function updateConnStatus(ok) {
     } else {
         el.innerHTML = '⚠️ 使用本地存储模式';
         el.style.color = 'var(--warning)';
+    }
+}
+
+// ========== 云端存储配置管理 ==========
+
+/**
+ * 加载已有的云端配置到设置表单
+ */
+function loadCloudConfig() {
+    var token = localStorage.getItem('fire_exam_token') || '';
+    var gistId = CONFIG.gistId || localStorage.getItem('fire_exam_gistId') || '';
+
+    if (token) {
+        document.getElementById('set-github-token').value = token;
+    }
+    if (gistId) {
+        document.getElementById('set-gist-id').value = gistId;
+    }
+
+    // 如果已有配置，显示详情面板
+    if (token || gistId) {
+        refreshCloudStatus();
+    }
+}
+
+/**
+ * 测试云端连接（验证 Token + Gist ID 是否有效）
+ */
+async function testCloudConnection() {
+    const msgEl = document.getElementById('cloud-config-msg');
+    msgEl.innerHTML = '<span style="color:var(--primary)">🔗 正在测试连接...</span>';
+
+    var tokenInput = document.getElementById('set-github-token').value.trim();
+    var gistIdInput = document.getElementById('set-gist-id').value.trim();
+
+    // 先保存用户刚输入的 token
+    if (tokenInput) {
+        localStorage.setItem('fire_exam_token', tokenInput);
+        CONFIG.githubToken = tokenInput;
+    }
+    if (gistIdInput) {
+        localStorage.setItem('fire_exam_gistId', gistIdInput);
+        CONFIG.gistId = gistIdInput;
+    }
+
+    var token = tokenInput || localStorage.getItem('fire_exam_token') || '';
+    var gistId = gistIdInput || CONFIG.gistId || localStorage.getItem('fire_exam_gistId') || '';
+
+    // Step 1: 验证 Token 有效性（调用 GitHub user API）
+    try {
+        var userRes = await fetch('https://api.github.com/user', {
+            headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json' }
+        });
+        if (!userRes.ok) {
+            msgEl.innerHTML = '<span style="color:var(--danger)">❌ Token 无效（HTTP ' + userRes.status + '）。请检查 Token 是否正确，是否具有 <code>gist</code> 权限。</span>';
+            return;
+        }
+        var userData = await userRes.json();
+        msgEl.innerHTML += '<br><span style="color:var(--success)">✅ Token 有效，登录账号：<strong>' + userData.login + '</strong></span>';
+    } catch(e) {
+        msgEl.innerHTML = '<span style="color:var(--danger)">❌ 网络错误：无法连接到 GitHub API。请检查网络。</span>';
+        return;
+    }
+
+    // Step 2: 如果有 Gist ID，验证是否能读写
+    if (gistId) {
+        try {
+            var gistRes = await fetch('https://api.github.com/gists/' + gistId, {
+                headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json' }
+            });
+            if (gistRes.ok) {
+                var gistData = await gistRes.json();
+                var fileCount = Object.keys(gistData.files || {}).length;
+                msgEl.innerHTML += '<br><span style="color:var(--success)">✅ Gist 可访问，包含 ' + fileCount + ' 个文件</span>';
+
+                // 显示状态详情
+                showCloudStatusDetail(true, userData.login, gistId, gistData);
+            } else if (gistRes.status === 404) {
+                msgEl.innerHTML += '<br><span style="color:var(--warning)">⚠️ Gist 未找到（可能已被删除或 ID 错误）。点击"初始化存储"可创建新的。</span>';
+            } else {
+                msgEl.innerHTML += '<br><span style="color:var(--danger)">❌ Gist 访问失败（HTTP ' + gistRes.status + '），可能是权限不足。</span>';
+            }
+        } catch(e) {
+            msgEl.innerHTML += '<br><span style="color:var(--warning)">⚠️ 无法验证 Gist：' + e.message + '</span>';
+        }
+    } else {
+        msgEl.innerHTML += '<br><span style="color:var(--info)">ℹ️ 尚未配置 Gist ID，点击"初始化存储"将自动创建。</span>';
+    }
+
+    // 更新存储状态显示
+    updateConnStatus(!!gistId);
+    document.getElementById('gist-id-display').textContent = gistId || '未配置';
+}
+
+/**
+ * 初始化云端存储（自动创建 Gist 或使用已有的）
+ */
+async function initCloudStorage() {
+    const msgEl = document.getElementById('cloud-config-msg');
+    var tokenInput = document.getElementById('set-github-token').value.trim();
+    var gistIdInput = document.getElementById('set-gist-id').value.trim();
+
+    if (!tokenInput) {
+        msgEl.innerHTML = '<span style="color:var(--danger)">❌ 请先输入 GitHub Token！</span>';
+        return;
+    }
+
+    // 保存 Token
+    localStorage.setItem('fire_exam_token', tokenInput);
+    CONFIG.githubToken = tokenInput;
+
+    msgEl.innerHTML = '<span style="color:var(--primary)">🚀 正在初始化云端存储...</span>';
+
+    // 如果指定了 Gist ID 且存在，直接用；否则创建新的
+    var targetGistId = gistIdInput;
+
+    if (targetGistId) {
+        // 验证指定的 Gist 是否可用
+        try {
+            var checkRes = await fetch('https://api.github.com/gists/' + targetGistId, {
+                headers: { 'Authorization': 'token ' + tokenInput, 'Accept': 'application/vnd.github+json' }
+            });
+            if (!checkRes.ok) {
+                msgEl.innerHTML = '<span style="color:var(--danger)">❌ 指定的 Gist 无效（HTTP ' + checkRes.status + '），请检查 ID 或留空以自动创建。</span>';
+                return;
+            }
+        } catch(e) {
+            msgEl.innerHTML = '<span style="color:var(--danger)">❌ 网络错误：' + e.message + '</span>';
+            return;
+        }
+    }
+
+    // 准备初始数据（合并当前内存中的数据）
+    var initialData = cloudData ? JSON.parse(JSON.stringify(cloudData)) : CONFIG.defaultData();
+
+    // 确保数据结构完整
+    if (!initialData.banks) initialData.banks = {};
+    if (!initialData.records) initialData.records = [];
+    if (!initialData.settings) initialData.settings = {};
+    if (!initialData.version) initialData.version = '2.0';
+
+    try {
+        if (targetGistId) {
+            // 使用已有 Gist → 写入数据
+            CONFIG.gistId = targetGistId;
+            localStorage.setItem('fire_exam_gistId', targetGistId);
+
+            var writeOk = await CloudDB.write(initialData);
+            if (writeOk) {
+                msgEl.innerHTML = '<span style="color:var(--success)">✅ 云端存储已就绪！Gist: <code>' + targetGistId + '</code></span><br>' +
+                    '<span style="font-size:12px;color:#666;">考生现在可以从任何设备考试，成绩会自动推送到云端。</span>';
+                document.getElementById('set-gist-id').value = targetGistId;
+                updateConnStatus(true);
+                document.getElementById('gist-id-display').textContent = targetGistId;
+                refreshCloudStatus();
+            } else {
+                msgEl.innerHTML = '<span style="color:var(--danger)">❌ 写入数据到 Gist 失败。请检查 Token 是否有 <code>gist</code> 写入权限。</span>';
+            }
+        } else {
+            // 创建全新 Gist
+            var newGistId = await CloudDB.init(tokenInput, initialData);
+            if (newGistId) {
+                CONFIG.gistId = newGistId;
+                localStorage.setItem('fire_exam_gistId', newGistId);
+
+                msgEl.innerHTML = '<span style="color:var(--success)">✅ 云端存储初始化成功！</span><br>' +
+                    '<span>Gist ID: <code>' + newGistId + '</code> （私有）</span><br>' +
+                    '<span style="font-size:12px;color:#666;">考生现在可以从任何设备考试，成绩会自动推送到云端。</span>';
+                document.getElementById('set-gist-id').value = newGistId;
+                updateConnStatus(true);
+                document.getElementById('gist-id-display').textContent = newGistId;
+                refreshCloudStatus();
+            } else {
+                msgEl.innerHTML = '<span style="color:var(--danger)">❌ 创建 Gist 失败。请检查 Token 是否有效。</span>';
+            }
+        }
+    } catch(e) {
+        console.error('初始化云端存储异常:', e);
+        msgEl.innerHTML = '<span style="color:var(--danger)">❌ 初始化异常：' + e.message + '</span>';
+    }
+}
+
+/**
+ * 刷新云端状态详情面板
+ */
+async function refreshCloudStatus() {
+    var token = localStorage.getItem('fire_exam_token') || '';
+    var gistId = CONFIG.gistId || localStorage.getItem('fire_exam_gistId') || '';
+
+    var panel = document.getElementById('cloud-status-detail');
+    if (!token && !gistId) {
+        panel.style.display = 'none';
+        return;
+    }
+    panel.style.display = '';
+
+    // 填充已知信息
+    document.getElementById('detail-gist-id').textContent = gistId || '(未配置)';
+    document.getElementById('detail-token-status').textContent = token ? '已配置 (' + token.substring(0, 8) + '...)' : '未配置';
+    document.getElementById('detail-token-status').style.color = token ? 'var(--success)' : 'var(--danger)';
+
+    if (!gistId || !token) {
+        document.getElementById('detail-data-version').textContent = '-';
+        document.getElementById('detail-bank-count').textContent = '-';
+        document.getElementById('detail-record-count').textContent = '-';
+        document.getElementById('detail-last-update').textContent = '-';
+        return;
+    }
+
+    try {
+        var res = await fetch('https://api.github.com/gists/' + gistId, {
+            headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json' }
+        });
+        if (res.ok) {
+            var data = await res.json();
+            var fileContent = data.files['fire-exam-data.json'];
+            var cloudDataDetail = null;
+            if (fileContent && fileContent.content) {
+                try { cloudDataDetail = JSON.parse(fileContent.content); } catch(e) {}
+            }
+
+            document.getElementById('detail-gist-id').innerHTML = '<a href="' + data.html_url + '" target="_blank" style="color:var(--primary)">' + gistId + '</a>';
+            document.getElementById('detail-data-version').textContent = cloudDataDetail ? (cloudDataDetail.version || '-') : '-';
+            document.getElementById('detail-bank-count').textContent = cloudDataDetail && cloudDataDetail.banks ? Object.keys(cloudDataDetail.banks).length : 0;
+            document.getElementById('detail-record-count').textContent = cloudDataDetail && cloudDataDetail.records ? cloudDataDetail.records.length : 0;
+
+            // 最后更新时间
+            var updated = new Date(data.updated_at);
+            document.getElementById('detail-last-update').textContent = updated.toLocaleString('zh-CN');
+
+            // 更新主连接状态
+            updateConnStatus(true);
+            document.getElementById('gist-id-display').textContent = gistId;
+        } else {
+            document.getElementById('detail-data-version').textContent = '读取失败 HTTP ' + res.status;
+            updateConnStatus(false);
+        }
+    } catch(e) {
+        document.getElementById('detail-last-update').textContent = '网络错误: ' + e.message;
+        updateConnStatus(false);
+    }
+}
+
+/**
+ * 显示完整的云端状态详情
+ */
+function showCloudStatusDetail(ok, login, gistId, gistData) {
+    var panel = document.getElementById('cloud-status-detail');
+    panel.style.display = '';
+
+    document.getElementById('detail-gist-id').innerHTML = gistData.html_url ?
+        '<a href="' + gistData.html_url + '" target="_blank" style="color:var(--primary)">' + gistId + '</a>' :
+        gistId;
+    document.getElementById('detail-token-status').textContent = login ? '已配置 (@' + login + ')' : '未配置';
+    document.getElementById('detail-token-status').style.color = ok ? 'var(--success)' : 'var(--danger)';
+
+    if (ok && gistData.files && gistData.files['fire-exam-data.json']) {
+        try {
+            var fc = JSON.parse(gistData.files['fire-exam-data.json'].content);
+            document.getElementById('detail-data-version').textContent = fc.version || '-';
+            document.getElementById('detail-bank-count').textContent = fc.banks ? Object.keys(fc.banks).length : 0;
+            document.getElementById('detail-record-count').textContent = fc.records ? fc.records.length : 0;
+        } catch(e) {
+            document.getElementById('detail-data-version').textContent = '(解析失败)';
+        }
+    }
+    var updated = gistData.updated_at ? new Date(gistData.updated_at).toLocaleString('zh-CN') : '-';
+    document.getElementById('detail-last-update').textContent = updated;
+}
+
+/**
+ * 生成考生前端链接（带云端配置参数）
+ * 管理员可把此链接发给考生，考生打开后自动获得云端写入能力
+ */
+function generateExamUrl() {
+    var token = localStorage.getItem('fire_exam_token') || '';
+    var gistId = CONFIG.gistId || localStorage.getItem('fire_exam_gistId') || '';
+
+    if (!token || !gistId) {
+        alert('请先完成云端存储配置（Token + Gist ID）');
+        return;
+    }
+
+    // 获取当前页面所在目录（admin.html 和 index.html 同级）
+    var basePath = location.href.substring(0, location.lastIndexOf('/') + 1);
+    var examUrl = basePath + 'index.html#token=' + encodeURIComponent(token) + '&gist=' + encodeURIComponent(gistId);
+
+    // 复制到剪贴板
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(examUrl).then(function() {
+            showToast('✅ 考生链接已复制到剪贴板！', 'success');
+        }).catch(function() {
+            prompt('请复制以下考生链接：', examUrl);
+        });
+    } else {
+        prompt('请复制以下考生链接：', examUrl);
     }
 }
 

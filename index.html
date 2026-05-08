@@ -451,8 +451,51 @@ let currentExam = {
 
 // ========== 初始化 v2.0 多题库 ==========
 async function init() {
+    // 从 URL 参数或 hash 读取云端配置（跨设备场景）
+    readCloudConfigFromURL();
     await loadQuestions();
     renderRanking();
+}
+
+/**
+ * 从 URL 参数读取云端配置
+ * 支持两种方式：
+ * 1. URL hash: #token=xxx&gist=yyy
+ * 2. URL search: ?token=xxx&gist=yyy
+ *
+ * 管理员配置一次后，可以把带参数的链接发给考生
+ */
+function readCloudConfigFromURL() {
+    try {
+        // 先从 hash 读（更隐蔽）
+        var hash = location.hash.substring(1);
+        var params = {};
+        if (hash) {
+            hash.split('&').forEach(function(pair) {
+                var parts = pair.split('=');
+                if (parts.length === 2) params[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1]);
+            });
+        }
+        // 再从 search 读（优先级更高，覆盖 hash）
+        if (location.search) {
+            location.search.substring(1).split('&').forEach(function(pair) {
+                var parts = pair.split('=');
+                if (parts.length === 2) params[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1]);
+            });
+        }
+
+        if (params.token) {
+            localStorage.setItem('fire_exam_token', params.token);
+            CONFIG.githubToken = params.token;
+        }
+        if (params.gist) {
+            localStorage.setItem('fire_exam_gistId', params.gist);
+            CONFIG.gistId = params.gist;
+        }
+        if (params.token || params.gist) {
+            console.log('✅ 已从 URL 加载云端配置 (gist:', !!params.gist, ', token:', !!params.token, ')');
+        }
+    } catch(e) {}
 }
 
 async function loadQuestions() {
@@ -566,19 +609,49 @@ function saveRecord(record) {
 
 /**
  * 将单条成绩记录同步到云端
+ * 跨设备场景：考生手机端交卷 → 成绩推送到 GitHub Gist → 管理员后台可见
  */
 function syncRecordToCloud(record) {
+    var token = CONFIG.githubToken || localStorage.getItem('fire_exam_token');
+    var gistId = CONFIG.gistId || localStorage.getItem('fire_exam_gistId') || '';
+
+    // 检查是否有云端配置
+    if (!token || !gistId) {
+        console.log('ℹ️ 云端未配置（无 Token 或 Gist ID），成绩仅保存本地');
+        return;
+    }
+
     CloudDB.read().then(function(cloudData) {
-        if (!cloudData) cloudData = { questions: [], records: [], settings: {}, version: '1.0' };
+        if (!cloudData) cloudData = { banks: {}, records: [], settings: {}, version: '2.0' };
         if (!cloudData.records) cloudData.records = [];
         // 添加新记录
         cloudData.records.push(record);
         // 写回云端
         CloudDB.write(cloudData).then(function(ok) {
-            if (ok) console.log('✅ 成绩已同步到云端');
-            else console.log('ℹ️ 云端同步失败（使用本地模式）');
-        }).catch(function(){});
-    }).catch(function(){});
+            if (ok) {
+                console.log('✅ 成绩已同步到云端');
+                // 在成绩页面显示云端同步成功提示
+                var syncTip = document.getElementById('cloud-sync-status');
+                if (syncTip) {
+                    syncTip.innerHTML = '☁️ 成绩已自动上传至云端';
+                    syncTip.style.color = 'var(--success)';
+                    syncTip.style.display = '';
+                }
+            } else {
+                console.warn('⚠️ 云端写入失败，成绩保存在本地');
+                var syncTip = document.getElementById('cloud-sync-status');
+                if (syncTip) {
+                    syncTip.innerHTML = '⚠️ 云端同步失败，成绩已保存本地';
+                    syncTip.style.color = 'var(--warning)';
+                    syncTip.style.display = '';
+                }
+            }
+        }).catch(function(err) {
+            console.error('❌ 云端同步异常:', err);
+        });
+    }).catch(function(err) {
+        console.error('❌ 读取云端数据异常:', err);
+    });
 }
 
 function getRecords() {
@@ -1386,7 +1459,9 @@ function renderScorePage(score, correct, partial, wrong, results) {
         + '<div class="score-detail-item correct"><div class="num">' + correct + '</div><div class="label">完全正确</div></div>'
         + '<div class="score-detail-item partial"><div class="num">' + partial + '</div><div class="label">部分正确</div></div>'
         + '<div class="score-detail-item wrong"><div class="num">' + wrong + '</div><div class="label">需加强</div></div>'
-        + '</div>';
+        + '</div>'
+        // 云端同步状态提示（初始隐藏，syncRecordToCloud 成功/失败后更新）
+        + '<div id="cloud-sync-status" style="margin-top:14px;font-size:13px;text-align:center;display:none;"></div>';
 
     renderWrongResults(results);
     renderAllResults(results);
