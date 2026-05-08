@@ -418,6 +418,18 @@
                     <button class="btn btn-outline btn-sm" onclick="exportQuestions()">📤 导出题库</button>
                 </div>
             </div>
+            <!-- 题库选择器 -->
+            <div class="card" style="margin-bottom:12px;padding:14px 18px;">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <label style="font-size:14px;font-weight:600;white-space:nowrap;">📂 当前题库：</label>
+                    <select id="bank-selector" onchange="switchBank(this.value)" style="flex:1;min-width:180px;max-width:350px;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-size:14px;background:white;cursor:pointer;">
+                        <option value="">-- 加载中... --</option>
+                    </select>
+                    <span id="bank-count" style="font-size:13px;color:var(--text-secondary);"></span>
+                    <button class="btn btn-outline btn-sm" onclick="showAddBankModal()" style="white-space:nowrap;">➕ 新建题库</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteCurrentBank()" id="btn-del-bank" style="white-space:nowrap;display:none;">🗑️ 删除此题库</button>
+                </div>
+            </div>
             <div class="card">
                 <div class="search-box">
                     <span>🔍</span>
@@ -428,7 +440,7 @@
                     <tbody id="q-tbody"></tbody>
                 </table>
                 <div class="empty-state" id="q-empty" style="display:none;">
-                    <div class="icon">📝</div><p>暂无题目，点击上方按钮添加</p>
+                    <div class="icon">📝</div><p>暂无题目，点击上方按钮添加或导入内置题库</p>
                 </div>
             </div>
         </div>
@@ -548,13 +560,34 @@
         </div>
         <div class="modal-body">
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
-                粘贴 JSON 格式的题目数组。格式：[{"id":1,"question":"问题","answer":"答案"}, ...]
+                粘贴 JSON 格式的题目数组。格式：[{"id":1,"question":"问题","answer":"答案"}, ...]<br>
+                题目将导入到当前选择的题库：<strong id="import-target-bank" style="color:var(--primary)">--</strong>
             </p>
             <textarea class="form-control" id="import-textarea" rows="10" placeholder='粘贴JSON数据...'></textarea>
         </div>
         <div class="modal-footer">
             <button class="btn btn-outline" onclick="closeModal('import-modal')">取消</button>
             <button class="btn btn-success" onclick="doImport()">📥 导入</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 新建题库弹窗 ========== -->
+<div class="modal-overlay" id="addbank-modal">
+    <div class="modal" style="max-width:420px;">
+        <div class="modal-header">
+            <h3 class="modal-title">新建题库</h3>
+            <button class="modal-close" onclick="closeModal('addbank-modal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+                输入新题库的名称，如："1号题库"、"安全法规题库"等
+            </p>
+            <input type="text" class="form-control" id="new-bank-name" placeholder="例：1号题库（消防基础）" style="width:100%;">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal('addbank-modal')">取消</button>
+            <button class="btn btn-primary" onclick="addNewBank()">✅ 创建</button>
         </div>
     </div>
 </div>
@@ -652,61 +685,73 @@ function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('open');
 }
 
-// ========== 数据加载 ==========
+// ========== 数据加载（v2.0 多题库） ==========
 async function refreshAllData() {
     showToast('正在加载数据...', '');
     try {
-        // 1. 优先从 localStorage 恢复（保证刷新不丢数据）
-        const localData = localStorage.getItem('fire_exam_cloud_data');
+        // 1. 优先从 localStorage 恢复
+        var localData = localStorage.getItem('fire_exam_cloud_data');
         if (localData) {
             try {
-                const parsed = JSON.parse(localData);
-                if (parsed && parsed.questions && parsed.questions.length > 0) {
+                var parsed = JSON.parse(localData);
+                // v2.0 检查：有 banks 或有旧版 questions 都算有效
+                if (parsed && ((parsed.banks && Object.keys(parsed.banks).length > 0) ||
+                    (parsed.questions && parsed.questions.length > 0))) {
                     cloudData = parsed;
-                    console.log('✅ 从本地缓存恢复数据（' + cloudData.questions.length + ' 道题）');
+                    ensureDataStructure();
+                    currentBankKey = '';
+                    refreshBankSelector();
+                    renderQuestions();
                     renderDashboard();
                     updateConnStatus(true);
                     hideToast();
                     return;
                 }
-            } catch(e) { /* localData 格式错误，继续往下走 */ }
+            } catch(e) { /* 继续往下 */ }
         }
 
         // 2. 尝试从云端读取
         cloudData = await CloudDB.read();
-        if (cloudData && cloudData.questions && cloudData.questions.length > 0) {
-            // 云端有数据，同步到 localStorage
-            localStorage.setItem('fire_exam_cloud_data', JSON.stringify(cloudData));
-            renderDashboard();
-            updateConnStatus(true);
-            hideToast();
-            return;
+        if (cloudData) {
+            ensureDataStructure();
+            // 检查是否有有效数据
+            var hasData = cloudData.banks && Object.keys(cloudData.banks).length > 0 &&
+                          Object.values(cloudData.banks).some(function(b) { return b.length > 0; });
+            if (!hasData) hasData = cloudData.records && cloudData.records.length > 0;
+
+            if (hasData) {
+                localStorage.setItem('fire_exam_cloud_data', JSON.stringify(cloudData));
+                currentBankKey = '';
+                refreshBankSelector();
+                renderQuestions();
+                renderDashboard();
+                updateConnStatus(true);
+                hideToast();
+                return;
+            }
         }
 
-        // 3. 都没有 → 用内置题库初始化
-        console.log('首次使用，加载内置题库');
-        cloudData = {
-            questions: typeof BUILTIN_QUESTIONS !== 'undefined' ? JSON.parse(JSON.stringify(BUILTIN_QUESTIONS)) : [],
-            records: [],
-            settings: { passScore: 70, defaultCount: 10, defaultTime: 20 },
-            version: '1.0'
-        };
-        // 立即保存到 localStorage
+        // 3. 都没有 → 用内置题库初始化到 v2.0 结构
+        console.log('首次使用，初始化默认题库');
+        cloudData = CONFIG.defaultData();
+        cloudData.banks['1号题库（消防基础）'] = JSON.parse(JSON.stringify(BUILTIN_QUESTIONS));
         localStorage.setItem('fire_exam_cloud_data', JSON.stringify(cloudData));
 
+        currentBankKey = '1号题库（消防基础）';
+        refreshBankSelector();
+        renderQuestions();
         renderDashboard();
         updateConnStatus(false);
         hideToast();
     } catch(err) {
         console.error('加载失败:', err);
-        // 异常时也用内置题库
-        cloudData = {
-            questions: typeof BUILTIN_QUESTIONS !== 'undefined' ? JSON.parse(JSON.stringify(BUILTIN_QUESTIONS)) : [],
-            records: [],
-            settings: { passScore: 70, defaultCount: 10, defaultTime: 20 },
-            version: '1.0'
-        };
+        cloudData = CONFIG.defaultData();
+        cloudData.banks['1号题库（消防基础）'] =
+            typeof BUILTIN_QUESTIONS !== 'undefined' ? JSON.parse(JSON.stringify(BUILTIN_QUESTIONS)) : [];
         localStorage.setItem('fire_exam_cloud_data', JSON.stringify(cloudData));
+        currentBankKey = '1号题库（消防基础）';
+        refreshBankSelector();
+        renderQuestions();
         renderDashboard();
         updateConnStatus(false);
         showToast('已加载内置题库 ✅', '');
@@ -714,25 +759,41 @@ async function refreshAllData() {
 }
 
 // ========== Dashboard 渲染 ==========
-function renderDashboard() {
+function updateDashboardCounts() {
     if (!cloudData) return;
 
-    const q = cloudData.questions || [];
-    const r = cloudData.records || [];
+    ensureDataStructure();
+    // 统计所有题库的题目总数
+    var totalQuestions = 0;
+    var bankCount = 0;
+    if (cloudData.banks) {
+        Object.keys(cloudData.banks).forEach(function(k) {
+            if (cloudData.banks[k] && cloudData.banks[k].length > 0) {
+                totalQuestions += cloudData.banks[k].length;
+                bankCount++;
+            }
+        });
+    }
 
-    // 统计数字
-    document.getElementById('stat-q-count').textContent = q.length;
+    var r = cloudData.records || [];
+
+    document.getElementById('stat-q-count').textContent = totalQuestions + ' (' + bankCount + '个题库)';
     document.getElementById('stat-exam-count').textContent = r.length;
-    
-    const persons = new Set(r.map(x => x.name));
+
+    var persons = new Set(r.map(function(x) { return x.name; }));
     document.getElementById('stat-person-count').textContent = persons.size;
-    
+
     if (r.length > 0) {
-        const avg = Math.round(r.reduce((s, x) => s + x.score, 0) / r.length);
+        var avg = Math.round(r.reduce(function(s, x) { return s + x.score; }, 0) / r.length);
         document.getElementById('stat-avg-score').textContent = avg + '分';
     } else {
         document.getElementById('stat-avg-score').textContent = '--';
     }
+}
+
+function renderDashboard() {
+    if (!cloudData) return;
+    updateDashboardCounts();
 
     document.getElementById('dash-update-time').textContent = new Date().toLocaleString('zh-CN');
 
@@ -844,27 +905,149 @@ const BUILTIN_QUESTIONS = [
     {"id": 36, "question": "在实施危险作业前，应申请相应的（？），并进行（？）。", "answer": "作业电子票，安全交底"}
 ];
 
-/** 一键导入内置题库 */
+/** 一键导入内置题库（导入到当前选择的题库） */
 async function importBuiltinQuestions() {
-    if (!confirm('确定要导入内置的 36 道消防考试题目吗？\n（会覆盖现有题库）')) return;
+    var bankKey = getCurrentBankKey();
+    var bankLabel = bankKey || '默认题库';
+    if (!confirm('确定要将 36 道消防考试题目导入到「' + bankLabel + '」吗？\n（会覆盖该题库现有题目）')) return;
 
-    if (!cloudData) cloudData = { questions: [], records: [], settings: {}, version: '1.0' };
-    // 深拷贝避免引用问题
-    cloudData.questions = JSON.parse(JSON.stringify(BUILTIN_QUESTIONS));
+    ensureDataStructure();
+    cloudData.banks[bankKey] = JSON.parse(JSON.stringify(BUILTIN_QUESTIONS));
 
     const ok = await saveToCloud();
     if (ok) {
+        refreshBankSelector();
         renderQuestions();
         updateDashboardCounts();
-        showToast('✅ 已成功导入 ' + BUILTIN_QUESTIONS.length + ' 道内置题库！', 'success');
+        showToast('✅ 已导入 ' + BUILTIN_QUESTIONS.length + ' 道题目到「' + bankLabel + '」', 'success');
     }
 }
 
-// ========== 题库管理 ==========
+// ========== 题库管理（v2.0 多题库）==========
+
+/** 当前选中的题库 key */
+let currentBankKey = '';
+
+function getCurrentBankKey() {
+    if (currentBankKey) return currentBankKey;
+    // 自动选第一个
+    if (cloudData && cloudData.banks) {
+        var keys = Object.keys(cloudData.banks).filter(function(k) { return cloudData.banks[k].length > 0; });
+        if (keys.length > 0) return keys[0];
+    }
+    return '1号题库（消防基础）';
+}
+
+/** 刷新题库下拉选择器 */
+function refreshBankSelector() {
+    var sel = document.getElementById('bank-selector');
+    if (!cloudData || !cloudData.banks) {
+        sel.innerHTML = '<option value="">-- 暂无题库 --</option>';
+        return;
+    }
+    var keys = Object.keys(cloudData.banks);
+    if (keys.length === 0) {
+        sel.innerHTML = '<option value="">-- 暂无题库，请新建或导入 --</option>';
+        document.getElementById('bank-count').textContent = '';
+        document.getElementById('btn-del-bank').style.display = 'none';
+        return;
+    }
+
+    sel.innerHTML = keys.map(function(k) {
+        var count = (cloudData.banks[k] || []).length;
+        return '<option value="' + k + '">' + escapeHtml(k) + ' (' + count + '道)</option>';
+    }).join('');
+
+    // 保持当前选中或选中第一个
+    if (!currentBankKey || !cloudData.banks[currentBankKey]) {
+        currentBankKey = keys[0];
+    }
+    sel.value = currentBankKey;
+
+    var count = (cloudData.banks[currentBankKey] || []).length;
+    document.getElementById('bank-count').textContent = '共 ' + count + ' 道题目';
+    document.getElementById('btn-del-bank').style.display = keys.length > 1 ? '' : 'none';
+}
+
+/** 切换题库 */
+function switchBank(bankKey) {
+    currentBankKey = bankKey;
+    var count = (cloudData.banks[bankKey] || []).length;
+    document.getElementById('bank-count').textContent = '共 ' + count + ' 道题目';
+    document.getElementById('btn-del-bank').style.display =
+        Object.keys(cloudData.banks || {}).length > 1 ? '' : 'none';
+    document.getElementById('q-search').value = '';
+    renderQuestions();
+}
+
+/** 显示新建题库弹窗 */
+function showAddBankModal() {
+    document.getElementById('new-bank-name').value = '';
+    showModal('addbank-modal');
+}
+
+/** 创建新题库 */
+async function addNewBank() {
+    var name = document.getElementById('new-bank-name').value.trim();
+    if (!name) { showToast('请输入题库名称', 'error'); return; }
+    if (!cloudData) ensureDataStructure();
+    if (cloudData.banks[name]) { showToast('题库"' + name + '"已存在', 'error'); return; }
+
+    cloudData.banks[name] = [];
+    currentBankKey = name;
+
+    const ok = await saveToCloud();
+    if (ok) {
+        closeModal('addbank-modal');
+        refreshBankSelector();
+        renderQuestions();
+        updateDashboardCounts();
+        showToast('✅ 已创建题库「' + name + '」', 'success');
+    }
+}
+
+/** 删除当前题库 */
+async function deleteCurrentBank() {
+    if (!currentBankKey) return;
+    if (!confirm('确定删除题库「' + currentBankKey + '」及其全部题目吗？')) return;
+
+    delete cloudData.banks[currentBankKey];
+    currentBankKey = '';
+
+    const ok = await saveToCloud();
+    if (ok) {
+        refreshBankSelector();
+        renderQuestions();
+        updateDashboardCounts();
+        showToast('🗑️ 题库已删除', 'success');
+    }
+}
+
+/** 确保 cloudData 是 v2.0 结构 */
+function ensureDataStructure() {
+    if (!cloudData) {
+        cloudData = CONFIG.defaultData();
+        return;
+    }
+    // 兼容旧版 v1 数据迁移：questions → banks
+    if (cloudData.questions && !cloudData.banks) {
+        cloudData.banks = {};
+        cloudData.banks['1号题库（消防基础）'] = cloudData.questions;
+        delete cloudData.questions;
+        cloudData.version = '2.0';
+        console.log('🔄 已将 v1 数据迁移到 v2.0 多题库结构');
+    }
+    if (!cloudData.banks) cloudData.banks = {};
+}
+
 let allQuestions = [];
 function renderQuestions(filter) {
     if (!cloudData) return;
-    allQuestions = cloudData.questions || [];
+    ensureDataStructure();
+
+    var bankKey = getCurrentBankKey();
+    allQuestions = cloudData.banks[bankKey] || [];
+
     if (filter) {
         filter = filter.toLowerCase();
         allQuestions = allQuestions.filter(function(q) {
@@ -873,7 +1056,7 @@ function renderQuestions(filter) {
         });
     }
 
-    const tbody = document.getElementById('q-tbody');
+    var tbody = document.getElementById('q-tbody');
     if (allQuestions.length > 0) {
         tbody.innerHTML = allQuestions.map(function(q) {
             return '<tr>' +
@@ -891,6 +1074,10 @@ function renderQuestions(filter) {
         document.querySelector('#panel-questions .card table').style.display = 'none';
         document.getElementById('q-empty').style.display = '';
     }
+
+    // 更新导入弹窗中的目标题库显示
+    var targetEl = document.getElementById('import-target-bank');
+    if (targetEl) targetEl.textContent = bankKey || '--';
 }
 
 function filterKeywords(val) { /* alias */ renderQuestions(val); }
@@ -899,8 +1086,9 @@ function filterQuestions(val) { renderQuestions(val); }
 function openQuestionModal(id) {
     document.getElementById('q-modal-title').textContent = id ? '编辑题目' : '添加题目';
     document.getElementById('q-edit-id').value = id || '';
+    var bankKey = getCurrentBankKey();
     if (id) {
-        const q = (cloudData.questions || []).find(function(x) { return x.id === id; });
+        var q = (cloudData.banks[bankKey] || []).find(function(x) { return x.id === id; });
         if (q) {
             document.getElementById('q-edit-question').value = q.question;
             document.getElementById('q-edit-answer').value = q.answer;
@@ -915,72 +1103,86 @@ function openQuestionModal(id) {
 function editQuestion(id) { openQuestionModal(id); }
 
 async function saveQuestion() {
-    const questionText = document.getElementById('q-edit-question').value.trim();
-    const answerText = document.getElementById('q-edit-answer').value.trim();
-    const editId = document.getElementById('q-edit-id').value;
+    var questionText = document.getElementById('q-edit-question').value.trim();
+    var answerText = document.getElementById('q-edit-answer').value.trim();
+    var editId = document.getElementById('q-edit-id').value;
 
     if (!questionText || !answerText) { showToast('请填写完整题目和答案', 'error'); return; }
 
-    if (!cloudData) cloudData = { questions: [], records: [], settings: {}, version: '1.0' };
-    if (!cloudData.questions) cloudData.questions = [];
+    ensureDataStructure();
+    var bankKey = getCurrentBankKey();
+    if (!cloudData.banks[bankKey]) cloudData.banks[bankKey] = [];
 
     if (editId) {
-        const idx = cloudData.questions.findIndex(function(x) { return x.id == editId; });
+        var idx = cloudData.banks[bankKey].findIndex(function(x) { return x.id == editId; });
         if (idx >= 0) {
-            cloudData.questions[idx].question = questionText;
-            cloudData.questions[idx].answer = answerText;
+            cloudData.banks[bankKey][idx].question = questionText;
+            cloudData.banks[bankKey][idx].answer = answerText;
         }
     } else {
-        const newId = cloudData.questions.length > 0 ?
-            Math.max.apply(null, cloudData.questions.map(function(x) { return x.id; })) + 1 : 1;
-        cloudData.questions.push({ id: newId, question: questionText, answer: answerText });
+        var newId = cloudData.banks[bankKey].length > 0 ?
+            Math.max.apply(null, cloudData.banks[bankKey].map(function(x) { return x.id; })) + 1 : 1;
+        cloudData.banks[bankKey].push({ id: newId, question: questionText, answer: answerText });
     }
 
-    const ok = await saveToCloud();
+    var ok = await saveToCloud();
     if (ok) {
         closeModal('q-modal');
+        refreshBankSelector();
         renderQuestions();
+        updateDashboardCounts();
         showToast(editId ? '题目已更新 ✅' : '题目已添加 ✅', 'success');
     }
 }
 
 async function deleteQuestion(id) {
     if (!confirm('确定删除第 ' + id + ' 题吗？')) return;
-    cloudData.questions = cloudData.questions.filter(function(x) { return x.id !== id; });
-    const ok = await saveToCloud();
+    var bankKey = getCurrentBankKey();
+    cloudData.banks[bankKey] = cloudData.banks[bankKey].filter(function(x) { return x.id !== id; });
+    var ok = await saveToCloud();
     if (ok) {
+        refreshBankSelector();
         renderQuestions();
+        updateDashboardCounts();
         showToast('已删除 🗑️', 'success');
     }
 }
 
 function openImportModal() {
     document.getElementById('import-textarea').value = '';
+    var targetEl = document.getElementById('import-target-bank');
+    if (targetEl) targetEl.textContent = getCurrentBankKey() || '--';
     showModal('import-modal');
 }
 
 async function doImport() {
     try {
-        const jsonStr = document.getElementById('import-textarea').value.trim();
+        var jsonStr = document.getElementById('import-textarea').value.trim();
         if (!jsonStr) { showToast('请粘贴 JSON 数据', 'error'); return; }
-        const imported = JSON.parse(jsonStr);
+        var imported = JSON.parse(jsonStr);
         if (!Array.isArray(imported)) { showToast('格式错误：需要 JSON 数组', 'error'); return; }
 
-        let count = 0;
+        ensureDataStructure();
+        var bankKey = getCurrentBankKey();
+        if (!cloudData.banks[bankKey]) cloudData.banks[bankKey] = [];
+
+        var count = 0;
         imported.forEach(function(item) {
             if (item.question && item.answer) {
-                const newId = cloudData.questions.length > 0 ?
-                    Math.max.apply(null, cloudData.questions.map(function(x) { return x.id; })) + 1 : 1;
-                cloudData.questions.push({ id: item.id || newId, question: item.question, answer: item.answer });
+                var newId = cloudData.banks[bankKey].length > 0 ?
+                    Math.max.apply(null, cloudData.banks[bankKey].map(function(x) { return x.id; })) + 1 : 1;
+                cloudData.banks[bankKey].push({ id: item.id || newId, question: item.question, answer: item.answer });
                 count++;
             }
         });
 
-        const ok = await saveToCloud();
+        var ok = await saveToCloud();
         if (ok) {
             closeModal('import-modal');
+            refreshBankSelector();
             renderQuestions();
-            showToast('成功导入 ' + count + ' 道题目 ✅', 'success');
+            updateDashboardCounts();
+            showToast('成功导入 ' + count + ' 道题目到「' + bankKey + '」 ✅', 'success');
         }
     } catch(e) {
         showToast('JSON 解析失败: ' + e.message, 'error');
@@ -988,9 +1190,12 @@ async function doImport() {
 }
 
 function exportQuestions() {
-    const data = cloudData.questions || [];
-    downloadFile(JSON.stringify(data, null, 2), 'fire-exam-questions.json', 'application/json');
-    showToast('题库已导出 ✅', 'success');
+    ensureDataStructure();
+    var bankKey = getCurrentBankKey();
+    var data = cloudData.banks[bankKey] || [];
+    var filename = (bankKey || 'questions').replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_') + '.json';
+    downloadFile(JSON.stringify(data, null, 2), filename, 'application/json');
+    showToast('题库「' + bankKey + '」已导出 ✅', 'success');
 }
 
 // ========== 成绩记录 ==========

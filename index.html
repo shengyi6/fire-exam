@@ -346,8 +346,16 @@
         <div class="card fade-in">
             <div class="welcome-logo"><div class="icon">🚨</div></div>
             <div class="welcome-title">欢迎参加消防岗位抽查考试</div>
-            <div class="welcome-desc">共 36 道题 · 随机抽题 · 在线答题</div>
-            <div class="form-group" style="margin-top: 24px;">
+            <div class="welcome-desc" id="welcome-desc">加载题库中...</div>
+
+            <!-- 题库选择器 -->
+            <div id="bank-selector-area" style="margin:18px 0;padding:14px;background:#E3F2FD;border-radius:10px;display:none;">
+                <label style="font-size:13px;font-weight:600;color:#0D47A1;display:block;margin-bottom:8px;">📂 选择考试题库：</label>
+                <select id="exam-bank-selector" onchange="onSelectExamBank(this.value)" style="width:100%;padding:10px 12px;border:2px solid #1565C0;border-radius:8px;font-size:15px;background:white;cursor:pointer;font-weight:500;">
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-top: 16px;">
                 <label>👤 请输入你的姓名</label>
                 <input type="text" id="input-name" placeholder="输入姓名..." autocomplete="off">
             </div>
@@ -370,7 +378,7 @@
     <div class="container">
         <div class="card fade-in">
             <div class="setting-row">
-                <div><div class="setting-name">抽取题目数量</div><div class="setting-desc">从36道题中随机抽取</div></div>
+                <div><div class="setting-name">抽取题目数量</div><div class="setting-desc" id="setting-desc">从题库中随机抽取</div></div>
                 <div class="setting-value"><input type="number" id="input-count" value="10" min="5" max="36"><span>题</span></div>
             </div>
             <div class="setting-row">
@@ -423,10 +431,11 @@
 
 <script>
 // ========== 完整题库数据（内嵌，共36道题） ==========
-const QUESTIONS_DATA = [{"id": 1, "question": "1、消防支队实行多少小时值班制度", "answer": "24小时"}, {"id": 2, "question": "2、消防支队每日值班人员最低配备要求？", "answer": "消防支队每日值班管理指挥人员不得少于1人，驾驶员7人，指挥调度中心2人，战斗员16人。"}, {"id": 3, "question": "3、所有进入飞行区控制区域的行为，必须提前提出申请；跑道、滑行道、联络道向哪个单位申请；机坪、服务车道向哪个单位申请；其余控制区域按《惠州机场公司防跑道侵入工作方案》执行，获得明确许可后方可进入。", "answer": "所有进入飞行区控制区域的行为，必须提前提出申请；跑道、滑行道、联络道向塔台申请；机坪、服务车道向运行指挥中心申请；其余控制区域按《惠州机场公司防跑道侵入工作方案》执行，获得明确许可后方可进入。"}, {"id": 4, "question": "4、惠州机场消防支队配备哪些消防车辆？", "answer": "主力（快调车）1辆、主力泡沫车1辆、重型泡沫车2辆、火场照明车1辆、通信指挥车1辆、保障车1辆"}, {"id": 5, "question": "5、惠州机场控制区内有几个消防集结点？", "answer": "2个"}, {"id": 6, "question": "6、航空器突发事件应急救援响应等级为哪些？", "answer": "原地待命、集结待命、紧急出动"}, {"id": 7, "question": "7、惠州机场消防保障等级为几级？", "answer": "7级"}, {"id": 8, "question": "8、机场消防接警室电话为多少？", "answer": "0752-5718119、0752-3588119"}, {"id": 9, "question": "9、塔台电话为多少？", "answer": "0752-5718155、0752-5718151"}, {"id": 10, "question": "10、机场指挥中心电话为多少？", "answer": "0752-5718156、0752-5718157"}, {"id": 11, "question": "11、你如何获得当天的重要天气预警（如大风、雷雨、低能见度）？收到预警后，你岗位需要额外注意什么？", "answer": "渠道包括不仅限于对讲机通报、内场信息通报系统、值班日志、手机工作群等。应对措施需结合岗位，如机务需准备轮挡和系留设备；地服需做好防滑及延误解释；高杆灯作业需暂停。"}, {"id": 12, "question": "12、如果发生火灾或发现可疑物品，你的第一动作是什么？", "answer": "火灾情形，第一动作包括呼救、使用最近灭火器、报火警（说明具体号码，5718119或3588119）；发现可疑物品时，遵守不触摸、隔离、报告（报告谁）、疏散周边。"}, {"id": 13, "question": "13、你所在岗位的核心安全风险是什么？", "answer": "说出本岗位最常见的不安全因素（如机务：航空器刮碰；保洁：FOD遗留；旅客服务：人员密集踩踏）。"}, {"id": 14, "question": "14、你所在的岗位或者店铺门口，最近的安全出口在哪里？最近的手动报警按钮在哪里？", "answer": "现场指出"}, {"id": 15, "question": "15、你清楚机场控制区/隔离区的通行证使用规定吗？了解通行证的区域管理吗？如果有一位没穿工装的“熟人”想借你的卡刷卡通过门禁，去里面找个朋友，你会怎么做？", "answer": "行证仅限本人使用，不得转借。应立即拒绝，并提醒对方这是违反《民用航空安全保卫条例》的行为。如果对方纠缠，应报告部门或报警。"}, {"id": 16, "question": "16、如果你的朋友或家人在微信上问你：“听说昨晚机场有架飞机紧急备降了？怎么回事啊？给我讲讲呗”、“你们机场部队有什么飞机，平时怎么飞的。”你会怎么回答？", "answer": "婉拒并解释“对不起，机场运行信息涉及安全和保密，未经授权不能对外透露。具体情况请关注官方发布的信息。”遵循核心原则：不拍照、不发朋友圈、不传谣、不泄密。"}, {"id": 17, "question": "17、安全生产工作应当以人为本，坚持（？）、（？），把保护人民生命安全摆在首位，树牢安全发展理念，坚持安全第一、预防为主、综合治理的方针，从源头上防范化解重大安全风险。", "answer": "人民至上，生命至上"}, {"id": 18, "question": "18、生产经营单位的全员安全生产责任制应当明确各岗位的责任人员、（？）和（？）等内容。", "answer": "责任范围，考核标准"}, {"id": 19, "question": "19、生产经营单位的（？）是本单位安全生产第一责任人，对本单位的安全生产工作全面负责。", "answer": "主要负责人"}, {"id": 20, "question": "20、从业人员在作业过程中，应当严格落实（？），遵守本单位的安全生产规章制度和操作规程，服从管理，正确佩戴和使用劳动防护用品。", "answer": "岗位安全责任"}, {"id": 21, "question": "21、未经（？）的从业人员，不得上岗作业。", "answer": "安全生产教育和培训合格"}, {"id": 22, "question": "22、从业人员的通用安全生产责任有（？）、（？）、（？）、（？）、（？）、（？）、（？）、（？）、（？）和（？）。", "answer": "参加安全生产教育培训，持证上岗，按章操作，服从现场管理，落实岗前、岗中、岗后安全检查，主动识别风险隐患，掌握岗位应急措施，及时报告运行异常情况，配合事件调查，参与安全作风和安全文化建设"}, {"id": 23, "question": "23、安全管理体系的四大支柱是（？）、（？）、（？）和（？）。", "answer": "安全政策、目标和资源，安全风险管理，安全保证，安全促进"}, {"id": 24, "question": "24、双重预防工作机制是指（？）和（？）。", "answer": "安全风险分级管控，隐患排查治理"}, {"id": 25, "question": "25、可能导致民用航空器事故、征候以及一般事件等后果的条件或者物体是（？）。", "answer": "危险源"}, {"id": 26, "question": "26、可能导致事故、征候及一般事件等后果的人的不安全行为、物的危险状态和管理上的缺陷是（？）。", "answer": "安全隐患"}, {"id": 27, "question": "27、安全风险等级从高到低分为（？）、（？）和（？）三个级别。", "answer": "不可接受风险，缓解后可接受风险，可接受风险"}, {"id": 28, "question": "28、安全隐患按危害程度和整改难度，分为（？）和（？）。", "answer": "一般安全隐患，重大安全隐患"}, {"id": 29, "question": "29：根据国家标准、行业标准或规章应持证的飞行区作业人员无证上岗属于（？）。", "answer": "民航重大安全隐患"}, {"id": 30, "question": "30、生产经营单位不得（？）、（？）直接关系生产安全的监控、报警、防护、救生设备、设施，或者篡改、隐瞒、销毁其相关数据、信息。", "answer": "关闭，破坏"}, {"id": 31, "question": "31、如运行环境、设施设备、组织机构、业务范围等发生变化，应及时启动（）程序。", "answer": "变更管理"}, {"id": 32, "question": "32、发生紧急事件，事发相关部门应当（？）电话/短信报告报告公司安全质量部（保卫部），并在事发后（？）内书面报告公司安全质量部（保卫部）。", "answer": "立即，8小时"}, {"id": 33, "question": "33、发生非紧急事件，事发相关部门应当在事发后（？）内书面报告公司安全质量部（保卫部）。", "answer": "24小时"}, {"id": 34, "question": "34、日常生产保障过程中发现安全问题或安全隐患可通过（？）进行报告。", "answer": "安全吹哨人"}, {"id": 35, "question": "35、《惠州机场公司危险作业管理办法》中的危险作业包含（？）、（？）、（？）和（？）。", "answer": "动火作业，有限空间作业，高处作业，临时用电作业"}, {"id": 36, "question": "36、在实施危险作业前，应申请相应的（？），并进行（？）。", "answer": "作业电子票，安全交底"}];
+const BUILTIN_QUESTIONS = [{"id": 1, "question": "消防支队实行多少小时值班制度", "answer": "24小时"}, {"id": 2, "question": "消防支队每日值班人员最低配备要求？", "answer": "消防支队每日值班管理指挥人员不得少于1人，驾驶员7人，指挥调度中心2人，战斗员16人。"}, {"id": 3, "question": "所有进入飞行区控制区域的行为，必须提前提出申请；跑道、滑行道、联络道向哪个单位申请；机坪、服务车道向哪个单位申请；其余控制区域按《惠州机场公司防跑道侵入工作方案》执行，获得明确许可后方可进入。", "answer": "所有进入飞行区控制区域的行为，必须提前提出申请；跑道、滑行道、联络道向塔台申请；机坪、服务车道向运行指挥中心申请；其余控制区域按《惠州机场公司防跑道侵入工作方案》执行，获得明确许可后方可进入。"}, {"id": 4, "question": "惠州机场消防支队配备哪些消防车辆？", "answer": "主力（快调车）1辆、主力泡沫车1辆、重型泡沫车2辆、火场照明车1辆、通信指挥车1辆、保障车1辆"}, {"id": 5, "question": "惠州机场控制区内有几个消防集结点？", "answer": "2个"}, {"id": 6, "question": "航空器突发事件应急救援响应等级为哪些？", "answer": "原地待命、集结待命、紧急出动"}, {"id": 7, "question": "惠州机场消防保障等级为几级？", "answer": "7级"}, {"id": 8, "question": "机场消防接警室电话为多少？", "answer": "0752-5718119、0752-3588119"}, {"id": 9, "question": "塔台电话为多少？", "answer": "0752-5718155、0752-5718151"}, {"id": 10, "question": "机场指挥中心电话为多少？", "answer": "0752-5718156、0752-5718157"}, {"id": 11, "question": "你如何获得当天的重要天气预警（如大风、雷雨、低能见度）？收到预警后，你岗位需要额外注意什么？", "answer": "渠道包括不仅限于对讲机通报、内场信息通报系统、值班日志、手机工作群等。应对措施需结合岗位，如机务需准备轮挡和系留设备；地服需做好防滑及延误解释；高杆灯作业需暂停。"}, {"id": 12, "question": "如果发生火灾或发现可疑物品，你的第一动作是什么？", "answer": "火灾情形，第一动作包括呼救、使用最近灭火器、报火警（说明具体号码，5718119或3588119）；发现可疑物品时，遵守不触摸、隔离、报告（报告谁）、疏散周边。"}, {"id": 13, "question": "你所在岗位的核心安全风险是什么？", "answer": "说出本岗位最常见的不安全因素（如机务：航空器刮碰；保洁：FOD遗留；旅客服务：人员密集踩踏）。"}, {"id": 14, "question": "你所在的岗位或者店铺门口，最近的安全出口在哪里？最近的手动报警按钮在哪里？", "answer": "现场指出"}, {"id": 15, "question": "你清楚机场控制区/隔离区的通行证使用规定吗？了解通行证的区域管理吗？如果有一位没穿工装的\"熟人\"想借你的卡刷卡通过门禁，去里面找个朋友，你会怎么做？", "answer": "行证仅限本人使用，不得转借。应立即拒绝，并提醒对方这是违反《民用航空安全保卫条例》的行为。如果对方纠缠，应报告部门或报警。"}, {"id": 16, "question": "如果你的朋友或家人在微信上问你：\"听说昨晚机场有架飞机紧急备降了？怎么回事啊？给我讲讲呗\"、\"你们机场部队有什么飞机，平时怎么飞的。\"你会怎么回答？", "answer": "婉拒并解释\"对不起，机场运行信息涉及安全和保密，未经授权不能对外透露。具体情况请关注官方发布的信息。\"遵循核心原则：不拍照、不发朋友圈、不传谣、不泄密。"}, {"id": 17, "question": "安全生产工作应当以人为本，坚持（？）、（？），把保护人民生命安全摆在首位，树牢安全发展理念，坚持安全第一、预防为主、综合治理的方针，从源头上防范化解重大安全风险。", "answer": "人民至上，生命至上"}, {"id": 18, "question": "生产经营单位的全员安全生产责任制应当明确各岗位的责任人员、（？）和（？）等内容。", "answer": "责任范围，考核标准"}, {"id": 19, "question": "生产经营单位的（？）是本单位安全生产第一责任人，对本单位的安全生产工作全面负责。", "answer": "主要负责人"}, {"id": 20, "question": "从业人员在作业过程中，应当严格落实（？），遵守本单位的安全生产规章制度和操作规程，服从管理，正确佩戴和使用劳动防护用品。", "answer": "岗位安全责任"}, {"id": 21, "question": "未经（？）的从业人员，不得上岗作业。", "answer": "安全生产教育和培训合格"}, {"id": 22, "question": "从业人员的通用安全生产责任有（？）、（？）、（？）、（？）、（？）、（？）、（？）、（？）、（？）和（？）。", "answer": "参加安全生产教育培训，持证上岗，按章操作，服从现场管理，落实岗前、岗中、岗后安全检查，主动识别风险隐患，掌握岗位应急措施，及时报告运行异常情况，配合事件调查，参与安全作风和安全文化建设"}, {"id": 23, "question": "安全管理体系的四大支柱是（？）、（？）、（？）和（？）。", "answer": "安全政策、目标和资源，安全风险管理，安全保证，安全促进"}, {"id": 24, "question": "双重预防工作机制是指（？）和（？）。", "answer": "安全风险分级管控，隐患排查治理"}, {"id": 25, "question": "可能导致民用航空器事故、征候以及一般事件等后果的条件或者物体是（？）。", "answer": "危险源"}, {"id": 26, "question": "可能导致事故、征候及一般事件等后果的人的不安全行为、物的危险状态和管理上的缺陷是（？）。", "answer": "安全隐患"}, {"id": 27, "question": "安全风险等级从高到低分为（？）、（？）和（？）三个级别。", "answer": "不可接受风险，缓解后可接受风险，可接受风险"}, {"id": 28, "question": "安全隐患按危害程度和整改难度，分为（？）和（？）。", "answer": "一般安全隐患，重大安全隐患"}, {"id": 29, "question": "根据国家标准、行业标准或规章应持证的飞行区作业人员无证上岗属于（？）。", "answer": "民航重大安全隐患"}, {"id": 30, "question": "生产经营单位不得（？）、（？）直接关系生产安全的监控、报警、防护、救生设备、设施，或者篡改、隐瞒、销毁其相关数据、信息。", "answer": "关闭，破坏"}, {"id": 31, "question": "如运行环境、设施设备、组织机构、业务范围等发生变化，应及时启动（）程序。", "answer": "变更管理"}, {"id": 32, "question": "发生紧急事件，事发相关部门应当（？）电话/短信报告报告公司安全质量部（保卫部），并在事发后（？）内书面报告公司安全质量部（保卫部）。", "answer": "立即，8小时"}, {"id": 33, "question": "发生非紧急事件，事发相关部门应当在事发后（？）内书面报告公司安全质量部（保卫部）。", "answer": "24小时"}, {"id": 34, "question": "日常生产保障过程中发现安全问题或安全隐患可通过（？）进行报告。", "answer": "安全吹哨人"}, {"id": 35, "question": "《惠州机场公司危险作业管理办法》中的危险作业包含（？）、（？）、（？）和（？）。", "answer": "动火作业，有限空间作业，高处作业，临时用电作业"}, {"id": 36, "question": "在实施危险作业前，应申请相应的（？），并进行（？）。", "answer": "作业电子票，安全交底"}];
 
 const STORAGE_KEY = 'fire_exam_records';
-let questions = QUESTIONS_DATA;
+let questions = [];
+let selectedBankKey = '';
 
 let currentExam = {
     studentName: '',
@@ -440,47 +449,100 @@ let currentExam = {
     currentQuestionIndex: 0
 };
 
-// ========== 初始化 ==========
+// ========== 初始化 v2.0 多题库 ==========
 async function init() {
-    // 优先从云端加载题库
-    await loadCloudQuestions();
+    await loadQuestions();
     renderRanking();
 }
 
-/**
- * 从云端加载题库（如果可用）
- * 如果云端不可用，使用内嵌题库作为后备
- */
-async function loadCloudQuestions() {
+async function loadQuestions() {
+    var loadedData = null;
+
+    // 1. localStorage (后台保存的数据)
     try {
-        const cloudData = await CloudDB.read();
-        if (cloudData && cloudData.questions && cloudData.questions.length > 0) {
-            questions = cloudData.questions;
-            document.querySelector('.welcome-desc').textContent =
-                '共 ' + questions.length + ' 道题 · 随机抽题 · 在线答题';
-            console.log('✅ 已从云端加载 ' + questions.length + ' 道题目');
-        }
-    } catch(e) {
-        console.log('ℹ️ 云端不可用，使用本地内嵌题库（' + QUESTIONS_DATA.length + ' 道）');
+        var localStr = localStorage.getItem('fire_exam_cloud_data');
+        if (localStr) loadedData = JSON.parse(localStr);
+    } catch(e) {}
+
+    // 2. CloudDB 云端
+    if (!loadedData || !loadedData.banks) {
+        try { loadedData = await CloudDB.read(); } catch(e) {}
     }
 
-    // 同时同步云端成绩到本地显示
+    // 3. 处理数据
+    if (loadedData && loadedData.banks) {
+        renderBankSelector(loadedData);
+        var firstBank = getFirstBankWithQuestions(loadedData);
+        if (firstBank) { selectBank(firstBank, loadedData); }
+        else { questions = BUILTIN_QUESTIONS; updateWelcomeDesc(questions.length); }
+    } else if (loadedData && loadedData.questions) {
+        questions = loadedData.questions;
+        hideBankSelector();
+        updateWelcomeDesc(questions.length);
+    } else {
+        questions = BUILTIN_QUESTIONS;
+        hideBankSelector();
+        updateWelcomeDesc(questions.length);
+    }
+
+    syncCloudRecords();
+}
+
+function getFirstBankWithQuestions(data) {
+    if (!data || !data.banks) return null;
+    var keys = Object.keys(data.banks);
+    for (var i = 0; i < keys.length; i++) {
+        if (data.banks[keys[i]] && data.banks[keys[i]].length > 0) return keys[i];
+    }
+    return null;
+}
+
+function renderBankSelector(data) {
+    var area = document.getElementById('bank-selector-area');
+    var sel = document.getElementById('exam-bank-selector');
+    if (!area || !sel || !data || !data.banks) { hideBankSelector(); return; }
+    var keys = Object.keys(data.banks).filter(function(k) { return data.banks[k] && data.banks[k].length > 0; });
+    if (keys.length <= 1) { hideBankSelector(); return; }
+    sel.innerHTML = keys.map(function(k) { return '<option value="' + k + '">' + k + ' (' + data.banks[k].length + '道)</option>'; }).join('');
+    if (!selectedBankKey || !data.banks[selectedBankKey]) selectedBankKey = keys[0];
+    sel.value = selectedBankKey;
+    area.style.display = '';
+}
+
+function hideBankSelector() { var el = document.getElementById('bank-selector-area'); if (el) el.style.display = 'none'; }
+
+function onSelectExamBank(bankKey) {
+    selectedBankKey = bankKey;
+    var localStr = localStorage.getItem('fire_exam_cloud_data');
+    if (localStr) { try { var d = JSON.parse(localStr); if (d && d.banks && d.banks[bankKey]) selectBank(bankKey, d); } catch(e) {} }
+}
+
+function selectBank(bankKey, data) {
+    selectedBankKey = bankKey;
+    questions = data.banks[bankKey] || [];
+    updateWelcomeDesc(questions.length);
+    var descEl = document.getElementById('setting-desc');
+    if (descEl) descEl.textContent = '从「' + bankKey + '」' + questions.length + '道中随机抽取';
+}
+
+function updateWelcomeDesc(count) {
+    var el = document.getElementById('welcome-desc');
+    if (el) el.textContent = '共 ' + count + ' 道题 · 随机抽题 · 在线答题';
+}
+
+async function syncCloudRecords() {
     try {
-        const cloudData = await CloudDB.read();
+        var cloudData = await CloudDB.read();
         if (cloudData && cloudData.records && cloudData.records.length > 0) {
-            // 合并云端记录到 localStorage
             var localRecords = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
             var localNames = new Set(localRecords.map(function(r){return r.name+r.date;}));
             cloudData.records.forEach(function(r){
                 var key = r.name + r.date;
-                if (!localNames.has(key)) {
-                    localRecords.push(r);
-                    localNames.add(key);
-                }
+                if (!localNames.has(key)) { localRecords.push(r); localNames.add(key); }
             });
             localStorage.setItem(STORAGE_KEY, JSON.stringify(localRecords));
         }
-    } catch(e2) { /* 忽略 */ }
+    } catch(e) {}
 }
 init();
 
