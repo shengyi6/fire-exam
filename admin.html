@@ -656,34 +656,60 @@ function toggleSidebar() {
 async function refreshAllData() {
     showToast('正在加载数据...', '');
     try {
-        cloudData = await CloudDB.read();
-        if (!cloudData || !cloudData.questions) {
-            // 尝试从本地 questions.json 加载作为初始数据
-            cloudData = {
-                questions: typeof QUESTIONS_DATA !== 'undefined' ? QUESTIONS_DATA : [],
-                records: [],
-                settings: { passScore: 70, defaultCount: 10, defaultTime: 20 },
-                version: '1.0'
-            };
-            // 如果没有 Gist ID，提示初始化
-            if (!CONFIG.gistId && !localStorage.getItem('fire_exam_gistId')) {
-                console.log('首次使用，需要初始化云端存储');
-            }
+        // 1. 优先从 localStorage 恢复（保证刷新不丢数据）
+        const localData = localStorage.getItem('fire_exam_cloud_data');
+        if (localData) {
+            try {
+                const parsed = JSON.parse(localData);
+                if (parsed && parsed.questions && parsed.questions.length > 0) {
+                    cloudData = parsed;
+                    console.log('✅ 从本地缓存恢复数据（' + cloudData.questions.length + ' 道题）');
+                    renderDashboard();
+                    updateConnStatus(true);
+                    hideToast();
+                    return;
+                }
+            } catch(e) { /* localData 格式错误，继续往下走 */ }
         }
-        renderDashboard();
-        updateConnStatus(true);
-        hideToast();
-    } catch(err) {
-        console.error('加载失败:', err);
+
+        // 2. 尝试从云端读取
+        cloudData = await CloudDB.read();
+        if (cloudData && cloudData.questions && cloudData.questions.length > 0) {
+            // 云端有数据，同步到 localStorage
+            localStorage.setItem('fire_exam_cloud_data', JSON.stringify(cloudData));
+            renderDashboard();
+            updateConnStatus(true);
+            hideToast();
+            return;
+        }
+
+        // 3. 都没有 → 用内置题库初始化
+        console.log('首次使用，加载内置题库');
         cloudData = {
-            questions: typeof QUESTIONS_DATA !== 'undefined' ? QUESTIONS_DATA : [],
+            questions: typeof BUILTIN_QUESTIONS !== 'undefined' ? JSON.parse(JSON.stringify(BUILTIN_QUESTIONS)) : [],
             records: [],
             settings: { passScore: 70, defaultCount: 10, defaultTime: 20 },
             version: '1.0'
         };
+        // 立即保存到 localStorage
+        localStorage.setItem('fire_exam_cloud_data', JSON.stringify(cloudData));
+
         renderDashboard();
         updateConnStatus(false);
-        showToast('使用本地模式（云端不可用）', 'error');
+        hideToast();
+    } catch(err) {
+        console.error('加载失败:', err);
+        // 异常时也用内置题库
+        cloudData = {
+            questions: typeof BUILTIN_QUESTIONS !== 'undefined' ? JSON.parse(JSON.stringify(BUILTIN_QUESTIONS)) : [],
+            records: [],
+            settings: { passScore: 70, defaultCount: 10, defaultTime: 20 },
+            version: '1.0'
+        };
+        localStorage.setItem('fire_exam_cloud_data', JSON.stringify(cloudData));
+        renderDashboard();
+        updateConnStatus(false);
+        showToast('已加载内置题库 ✅', '');
     }
 }
 
