@@ -1703,28 +1703,54 @@ function showCloudStatusDetail(ok, login, gistId, gistData) {
  * 管理员可把此链接发给考生，考生打开后自动获得云端写入能力
  */
 function generateExamUrl() {
-    var token = localStorage.getItem('fire_exam_token') || '';
-    var gistId = CONFIG.gistId || localStorage.getItem('fire_exam_gistId') || '';
+    try {
+        var token = localStorage.getItem('fire_exam_token') || '';
+        var gistId = CONFIG.gistId || localStorage.getItem('fire_exam_gistId') || '';
 
-    if (!token || !gistId) {
-        alert('请先完成云端存储配置（Token + Gist ID）');
-        return;
+        if (!token || !gistId) {
+            alert('请先完成云端存储配置（Token + Gist ID）');
+            return;
+        }
+
+        // 获取当前页面所在目录（admin.html 和 index.html 同级）
+        var basePath = location.href.substring(0, location.href.lastIndexOf('/') + 1);
+        var examUrl = basePath + 'index.html#token=' + encodeURIComponent(token) + '&gist=' + encodeURIComponent(gistId);
+
+        // 方案1: Clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(examUrl).then(function() {
+                showToast('✅ 考生链接已复制到剪贴板！', 'success');
+            }).catch(function() {
+                fallbackCopy(examUrl);
+            });
+            return;
+        }
+
+        // 方案2: execCommand 兜底
+        fallbackCopy(examUrl);
+    } catch(e) {
+        console.error('生成考生链接异常:', e);
+        alert('生成链接时出错: ' + e.message);
     }
+}
 
-    // 获取当前页面所在目录（admin.html 和 index.html 同级）
-    var basePath = location.href.substring(0, location.lastIndexOf('/') + 1);
-    var examUrl = basePath + 'index.html#token=' + encodeURIComponent(token) + '&gist=' + encodeURIComponent(gistId);
-
-    // 复制到剪贴板
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(examUrl).then(function() {
-            showToast('✅ 考生链接已复制到剪贴板！', 'success');
-        }).catch(function() {
-            prompt('请复制以下考生链接：', examUrl);
-        });
-    } else {
-        prompt('请复制以下考生链接：', examUrl);
+/**
+ * 复制到剪贴板的兜底方案
+ */
+function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        showToast('✅ 考生链接已复制到剪贴板！', 'success');
+    } catch(e) {
+        prompt('请复制以下考生链接：', text);
     }
+    document.body.removeChild(ta);
 }
 
 // ========== 工具函数 ==========
