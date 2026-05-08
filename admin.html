@@ -482,6 +482,16 @@
                 <button class="btn btn-primary" onclick="saveSettings()" style="margin-top:16px;">💾 保存设置</button>
             </div>
             <div class="card">
+                <h3 style="margin-bottom:16px;font-size:16px;">🔐 管理员密码</h3>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">修改后台登录密码</p>
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label style="font-size:13px;color:var(--text-secondary);">当前密码 / 输入新密码</label>
+                    <input type="password" class="form-control" id="set-new-pwd" placeholder="输入新的登录密码..." style="max-width:300px;margin-top:6px;">
+                </div>
+                <button class="btn btn-primary" onclick="changeAdminPassword()">🔑 修改密码</button>
+                <span id="pwd-change-msg" style="margin-left:12px;font-size:13px;"></span>
+            </div>
+            <div class="card">
                 <h3 style="margin-bottom:16px;font-size:16px;color:var(--danger)">危险操作</h3>
                 <div class="setting-row">
                     <div class="setting-info"><div class="name" style="color:var(--danger)">清除所有成绩</div><div class="desc">此操作不可恢复！将删除所有考试记录</div></div>
@@ -579,13 +589,16 @@ function doLogin() {
     const pwd = document.getElementById('login-pwd').value;
     if (!pwd) { showLoginError(); return; }
 
+    // 优先使用自定义密码（localStorage），否则用 config.js 默认值
+    const targetHash = localStorage.getItem('fire_exam_admin_pwd_hash') || CONFIG.adminPasswordHash;
+
     // 调试：输出 MD5 值到控制台
     console.log('[DEBUG] 输入密码:', pwd);
     console.log('[DEBUG] 输入MD5:', CONFIG.md5(pwd));
-    console.log('[DEBUG] 期望MD5:', CONFIG.adminPasswordHash);
+    console.log('[DEBUG] 期望MD5:', targetHash);
 
     // 支持两种方式：MD5匹配 或 明文密码 123456
-    if (CONFIG.md5(pwd) === CONFIG.adminPasswordHash || pwd === '123456') {
+    if (CONFIG.md5(pwd) === targetHash || pwd === '123456') {
         localStorage.setItem('fire_exam_admin_logged', 'true');
         showApp();
     } else {
@@ -1025,6 +1038,30 @@ async function clearAllRecords() {
         renderDashboard();
         showToast('所有成绩已清除 ⚠️', 'success');
     }
+}
+
+function changeAdminPassword() {
+    const newPwd = document.getElementById('set-new-pwd').value.trim();
+    const msgEl = document.getElementById('pwd-change-msg');
+
+    if (!newPwd || newPwd.length < 3) {
+        msgEl.style.color = 'var(--danger)';
+        msgEl.textContent = '❌ 密码至少需要 3 个字符';
+        setTimeout(() => { msgEl.textContent = ''; }, 3000);
+        return;
+    }
+
+    // 更新 CONFIG 中的 MD5 哈希
+    CONFIG.adminPasswordHash = CONFIG.md5(newPwd);
+    // 同时持久化到 localStorage（防止刷新丢失）
+    localStorage.setItem('fire_exam_admin_pwd_hash', CONFIG.adminPasswordHash);
+
+    // 清空输入框
+    document.getElementById('set-new-pwd').value = '';
+
+    msgEl.style.color = 'var(--success)';
+    msgEl.textContent = '✅ 密码已修改，新密码：' + newPwd.replace(/./g, '•');
+    showToast('管理员密码已更新 ✅', 'success');
 }
 
 // ========== 云端存储 ==========
